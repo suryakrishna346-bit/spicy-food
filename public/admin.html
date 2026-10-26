@@ -109,6 +109,7 @@ button:hover{opacity:.9}
     </section>
 
     <p id="message" role="status"></p>
+    <p id="newOrderAlert" role="status" aria-live="polite"></p>
     <div id="orders"></div>
   </section>
 </main>
@@ -189,6 +190,22 @@ async function loadOrders() {
 
   try {
     const orders = await api("/api/admin/orders");
+
+    const currentOrderIds = new Set(orders.map(order => String(order.id)));
+    const alertBox = document.getElementById("newOrderAlert");
+
+    if (knownOrderIds !== null) {
+      const newOrders = orders.filter(
+        order => !knownOrderIds.has(String(order.id))
+      );
+
+      if (newOrders.length > 0) {
+        alertBox.textContent = "🔔 New order received: " +
+          newOrders.map(order => "#" + order.id).join(", ");
+      }
+    }
+
+    knownOrderIds = currentOrderIds;
 
     document.getElementById("totalOrders").textContent = orders.length;
     document.getElementById("pendingOrders").textContent =
@@ -472,6 +489,18 @@ menuForm.addEventListener("submit", async event => {
 document.getElementById("menuCancelBtn").addEventListener("click", resetMenuForm);
 document.getElementById("menuRefreshBtn").addEventListener("click", loadMenu);
 
+
+
+// AUTO_ORDER_ALERT_START
+let knownOrderIds = null;
+let ordersRequestRunning = false;
+
+setInterval(() => {
+  if (!dashboard.classList.contains("hidden")) {
+    loadOrders();
+  }
+}, 15000);
+// AUTO_ORDER_ALERT_END
 
 document.getElementById("refreshBtn").addEventListener("click", loadOrders);
 document.getElementById("refreshBtn").addEventListener("click", loadMenu);

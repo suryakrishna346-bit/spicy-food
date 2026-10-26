@@ -779,6 +779,30 @@ document.getElementById("checkout").addEventListener("submit", async event => {
       "Total: " + money(result.total) + "\\n" +
       "Please confirm my order.";
 
+
+    const invoiceButton = document.createElement("button");
+    invoiceButton.type = "button";
+    invoiceButton.textContent = "🧾 Print / Save Invoice";
+    invoiceButton.style.cssText =
+      "display:inline-block;margin-top:10px;margin-right:8px;padding:12px 16px;" +
+      "background:#ffbd45;color:#20120a;border:0;border-radius:8px;font-weight:bold;cursor:pointer;";
+    invoiceButton.addEventListener("click", () => downloadInvoice({
+      orderId: result.orderId,
+      createdAt: result.createdAt || new Date().toISOString(),
+      customer: result.customer || {
+        name: order.name,
+        phone: order.phone,
+        address: order.address
+      },
+      items: result.items || [],
+      total: result.total,
+      paymentMethod: result.paymentMethod,
+      paymentStatus: result.paymentStatus
+    }));
+
+    message.appendChild(document.createElement("br"));
+    message.appendChild(invoiceButton);
+
     const whatsappButton = document.createElement("button");
     whatsappButton.type = "button";
     whatsappButton.textContent = "📲 Send Order ID on WhatsApp";
@@ -808,6 +832,74 @@ document.getElementById("checkout").addEventListener("submit", async event => {
   }
 });
 
+
+
+function downloadInvoice(order) {
+  const invoiceWindow = window.open("", "_blank");
+  if (!invoiceWindow) {
+    alert("Please allow pop-ups to print or save your invoice.");
+    return;
+  }
+
+  const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+
+  const items = (order.items || []).map(item => `
+    <tr>
+      <td>${escapeHtml(item.name)}</td>
+      <td>${Number(item.quantity) || 0}</td>
+      <td>${money(item.price)}</td>
+      <td>${money(item.subtotal)}</td>
+    </tr>
+  `).join("");
+
+  invoiceWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>Invoice Order #${escapeHtml(order.orderId)}</title>
+      <style>
+        body{font-family:Arial,sans-serif;max-width:760px;margin:25px auto;padding:20px;color:#222}
+        h1{margin-bottom:4px} .muted{color:#555}
+        table{width:100%;border-collapse:collapse;margin-top:20px}
+        th,td{padding:10px 6px;border-bottom:1px solid #ddd;text-align:left}
+        .total{text-align:right;font-size:22px;font-weight:bold;margin-top:20px}
+        .button{padding:10px 16px;margin:15px 0;background:#222;color:#fff;border:0}
+        @media print{.button{display:none}body{margin:0;padding:10px}}
+      </style>
+    </head>
+    <body>
+      <h1>🌶️ SPICY FOOD RESTAURANT</h1>
+      <p class="muted">Hyderabad</p>
+      <hr>
+      <h2>Order Invoice</h2>
+      <p><strong>Invoice / Order ID:</strong> #${escapeHtml(order.orderId)}</p>
+      <p><strong>Date:</strong> ${escapeHtml(new Date(order.createdAt).toLocaleString())}</p>
+      <p><strong>Customer:</strong> ${escapeHtml(order.customer?.name)}</p>
+      <p><strong>Phone:</strong> ${escapeHtml(order.customer?.phone)}</p>
+      <p><strong>Address:</strong> ${escapeHtml(order.customer?.address)}</p>
+      <table>
+        <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Subtotal</th></tr></thead>
+        <tbody>${items}</tbody>
+      </table>
+      <div class="total">Total: ${escapeHtml(money(order.total))}</div>
+      <p><strong>Payment Method:</strong> ${escapeHtml(order.paymentMethod)}</p>
+      <p><strong>Payment Status:</strong> ${escapeHtml(order.paymentStatus)}</p>
+      <p class="muted">UPI payments are not confirmed until the restaurant verifies receipt.</p>
+      <button class="button" onclick="window.print()">Print / Save as PDF</button>
+    </body>
+    </html>
+  `);
+
+  invoiceWindow.document.close();
+}
 
 document.getElementById("trackOrderForm").addEventListener("submit", async event => {
   event.preventDefault();

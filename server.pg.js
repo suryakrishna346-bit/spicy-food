@@ -389,11 +389,19 @@ app.post("/api/orders", async (req, res) => {
       success: true,
       orderId: orderIdText,
       trackingToken: createTrackingToken(result.rows[0].id),
+      customer: {
+        name: name.trim(),
+        phone: phone.trim(),
+        address: address.trim()
+      },
+      items: orderItems,
+      createdAt: new Date().toISOString(),
       total: result.rows[0].total,
       paymentMethod,
       paymentStatus: paymentMethod === "UPI" ? "Pending verification" : "Pending",
       upiUri,
       qrCode,
+      qrError,
       message: "Order received successfully."
     });
   } catch (error) {
