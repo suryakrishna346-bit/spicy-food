@@ -30,7 +30,16 @@ const pool = new Pool({
 app.disable("x-powered-by");
 app.use(express.json({ limit: "20kb" }));
 
+const PgSession = require("connect-pg-simple")(session);
+
+const sessionStore = new PgSession({
+  pool,
+  tableName: "user_sessions",
+  createTableIfMissing: true
+});
+
 app.use(session({
+  store: sessionStore,
   name: "spicy_admin",
   secret: process.env.SESSION_SECRET,
   resave: false,
