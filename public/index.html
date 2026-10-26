@@ -719,8 +719,8 @@ document.getElementById("checkout").addEventListener("submit", async event => {
         "Total: " + money(result.total) + "\n" +
         "Please confirm my order."
       );
-    whatsappButton.target = "_blank";
-    whatsappButton.rel = "noopener noreferrer";
+    whatsappButton.removeAttribute("target");
+    whatsappButton.removeAttribute("rel");
     whatsappButton.style.cssText =
       "display:inline-block;margin-top:10px;padding:12px 16px;" +
       "background:#25D366;color:white;border-radius:8px;" +
