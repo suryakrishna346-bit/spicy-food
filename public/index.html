@@ -413,6 +413,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px
           required
         ></textarea>
 
+        <label for="paymentMethod"><strong>Payment Method</strong></label>
+        <select name="paymentMethod" id="paymentMethod" required>
+          <option value="UPI">UPI Payment (Scan QR Code)</option>
+          <option value="COD">Cash on Delivery</option>
+        </select>
+
+        <div id="upiPaymentBox" style="display:none;padding:14px;border:1px solid #ddd;border-radius:10px">
+          <h3>Pay using UPI</h3>
+          <p>UPI ID: <strong>8106625268@fam</strong></p>
+          <div id="upiQrBox"></div>
+          <p id="upiPaymentInfo">QR Code will appear after placing your order.</p>
+          <button type="button" id="openUpiApp" class="primary" style="display:none">
+            Open UPI App
+          </button>
+          <p style="font-size:13px">Payment is not confirmed until the restaurant verifies receipt.</p>
+        </div>
+
         <button class="primary" type="submit">
           Place Order
         </button>
@@ -662,6 +679,20 @@ document.querySelectorAll("[data-cat]").forEach(button => {
   });
 });
 
+const paymentSelector = document.getElementById("paymentMethod");
+const upiPreview = document.getElementById("upiPaymentBox");
+
+if (paymentSelector && upiPreview) {
+  paymentSelector.addEventListener("change", () => {
+    upiPreview.style.display =
+      paymentSelector.value === "UPI" ? "block" : "none";
+    document.getElementById("upiPaymentInfo").textContent =
+      paymentSelector.value === "UPI"
+        ? "QR Code will appear after placing your order."
+        : "Cash on Delivery selected.";
+  });
+}
+
 document.getElementById("checkout").addEventListener("submit", async event => {
   event.preventDefault();
 
@@ -679,6 +710,7 @@ document.getElementById("checkout").addEventListener("submit", async event => {
     name: formData.get("name").trim(),
     phone: formData.get("phone").trim(),
     address: formData.get("address").trim(),
+    paymentMethod: formData.get("paymentMethod"),
     items: Object.entries(cart).map(([id, quantity]) => ({
       id: Number(id),
       quantity
@@ -709,6 +741,37 @@ document.getElementById("checkout").addEventListener("submit", async event => {
       " received! Total: " + money(result.total) +
       ". Tracking Token: " + result.trackingToken +
       ". Save your Order ID and Tracking Token to check order status.";
+
+    const paymentMethod = result.paymentMethod;
+    const upiBox = document.getElementById("upiPaymentBox");
+    const qrBox = document.getElementById("upiQrBox");
+    const upiInfo = document.getElementById("upiPaymentInfo");
+    const openUpiApp = document.getElementById("openUpiApp");
+
+    if (upiBox) {
+      upiBox.style.display = paymentMethod === "UPI" ? "block" : "none";
+      qrBox.replaceChildren();
+
+      if (paymentMethod === "UPI" && result.qrCode) {
+        const qr = document.createElement("img");
+        qr.src = result.qrCode;
+        qr.alt = "UPI payment QR code for order " + result.orderId;
+        qr.style.cssText = "display:block;width:280px;max-width:100%;height:auto;margin:12px auto";
+        qrBox.appendChild(qr);
+
+        upiInfo.textContent =
+          "Order #" + result.orderId + " · Amount: " + money(result.total) +
+          " · Payment status: Pending verification.";
+
+        openUpiApp.style.display = "inline-block";
+        openUpiApp.onclick = () => {
+          window.location.href = result.upiUri;
+        };
+      } else if (paymentMethod === "COD") {
+        upiInfo.textContent = "Cash on Delivery selected. Pay when your order is delivered.";
+        openUpiApp.style.display = "none";
+      }
+    }
 
     const whatsappMessage =
       "🌶️ SPICY FOOD RESTAURANT\\n" +

@@ -5,6 +5,7 @@ const session = require("express-session");
 const crypto = require("crypto");
 const path = require("path");
 const { Pool } = require("pg");
+const QRCode = require("qrcode");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -110,6 +111,8 @@ function mapOrder(row) {
     items: row.items,
     total: row.total,
     status: row.status,
+    paymentMethod: row.payment_method || "COD",
+    paymentStatus: row.payment_status || "Pending",
     createdAt: new Date(row.created_at).toISOString()
   };
 }
@@ -267,6 +270,11 @@ app.delete("/api/admin/menu/:id", adminOnly, async (req, res) => {
 
 app.post("/api/orders", async (req, res) => {
   const { name, phone, address, items } = req.body || {};
+  const paymentMethod = req.body && req.body.paymentMethod;
+
+  if (!["UPI", "COD"].includes(paymentMethod)) {
+    return res.status(400).json({ error: "Choose UPI or Cash on Delivery." });
+  }
 
   if (typeof name !== "string" || typeof phone !== "string" ||
       typeof address !== "string" || !Array.isArray(items)) {
@@ -333,21 +341,59 @@ app.post("/api/orders", async (req, res) => {
 
     const result = await client.query(
       `INSERT INTO orders
-       (id, name, phone, address, items, total, status, created_at)
-       VALUES ($1,$2,$3,$4,$5::jsonb,$6,'Pending',NOW())
+       (id, name, phone, address, items, total, status, created_at,
+        payment_method, payment_status)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,'Pending',NOW(),$7,$8)
        RETURNING id, total`,
       [
         orderId, name.trim(), phone.trim(), address.trim(),
-        JSON.stringify(orderItems), total
+        JSON.stringify(orderItems),
+        total,
+        paymentMethod,
+        paymentMethod === "UPI" ? "Pending verification" : "Pending"
       ]
     );
 
+    const orderIdText = String(result.rows[0].id);
+
     await client.query("COMMIT");
+
+    let upiUri = null;
+    let qrCode = null;
+    let qrError = false;
+
+    if (paymentMethod === "UPI") {
+      const params = new URLSearchParams({
+        pa: "8106625268@fam",
+        pn: "SPICY FOOD RESTAURANT",
+        am: Number(result.rows[0].total).toFixed(2),
+        cu: "INR",
+        tn: "Order " + orderIdText
+      });
+
+      upiUri = "upi://pay?" + params.toString();
+
+      try {
+        qrCode = await QRCode.toDataURL(upiUri, {
+          errorCorrectionLevel: "M",
+          margin: 2,
+          width: 280
+        });
+      } catch (qrErrorDetail) {
+        qrError = true;
+        console.error("UPI QR generation failed:", qrErrorDetail.message);
+      }
+    }
+
     res.status(201).json({
       success: true,
-      orderId: String(result.rows[0].id),
+      orderId: orderIdText,
       trackingToken: createTrackingToken(result.rows[0].id),
       total: result.rows[0].total,
+      paymentMethod,
+      paymentStatus: paymentMethod === "UPI" ? "Pending verification" : "Pending",
+      upiUri,
+      qrCode,
       message: "Order received successfully."
     });
   } catch (error) {
@@ -398,7 +444,8 @@ app.get("/api/orders/:id/status", async (req, res) => {
 app.get("/api/admin/orders", adminOnly, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, name, phone, address, items, total, status, created_at
+      `SELECT id, name, phone, address, items, total, status, created_at,
+              payment_method, payment_status
        FROM orders ORDER BY created_at DESC`
     );
     res.json(result.rows.map(mapOrder));
@@ -418,7 +465,8 @@ app.patch("/api/admin/orders/:id/status", adminOnly, async (req, res) => {
   try {
     const result = await pool.query(
       `UPDATE orders SET status=$1 WHERE id=$2
-       RETURNING id, name, phone, address, items, total, status, created_at`,
+       RETURNING id, name, phone, address, items, total, status, created_at,
+                 payment_method, payment_status`,
       [status, req.params.id]
     );
     if (!result.rowCount) {
@@ -428,6 +476,38 @@ app.patch("/api/admin/orders/:id/status", adminOnly, async (req, res) => {
   } catch (error) {
     console.error("Order update failed:", error.code || error.message);
     res.status(500).json({ error: "Could not update order." });
+  }
+});
+
+app.patch("/api/admin/orders/:id/payment", adminOnly, async (req, res) => {
+  const { paymentStatus } = req.body || {};
+
+  if (!["Paid", "Pending verification"].includes(paymentStatus)) {
+    return res.status(400).json({ error: "Invalid payment status." });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE orders
+       SET payment_status = $1
+       WHERE id = $2 AND payment_method = 'UPI'
+       RETURNING id, payment_method, payment_status`,
+      [paymentStatus, req.params.id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ error: "UPI order not found." });
+    }
+
+    res.json({
+      success: true,
+      orderId: String(result.rows[0].id),
+      paymentMethod: result.rows[0].payment_method,
+      paymentStatus: result.rows[0].payment_status
+    });
+  } catch (error) {
+    console.error("Payment update failed:", error.code || error.message);
+    res.status(500).json({ error: "Could not update payment status." });
   }
 });
 
@@ -449,6 +529,19 @@ async function start() {
   const client = await pool.connect();
   try {
     await client.query("SELECT 1");
+
+    await client.query(`
+      ALTER TABLE orders
+      ADD COLUMN IF NOT EXISTS payment_method VARCHAR(10)
+      NOT NULL DEFAULT 'COD'
+    `);
+
+    await client.query(`
+      ALTER TABLE orders
+      ADD COLUMN IF NOT EXISTS payment_status VARCHAR(30)
+      NOT NULL DEFAULT 'Pending'
+    `);
+
     const menuCount = await client.query(
       "SELECT COUNT(*)::int AS count FROM menu_items"
     );

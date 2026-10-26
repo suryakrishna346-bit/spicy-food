@@ -262,6 +262,18 @@ async function loadOrders() {
 
       card.appendChild(list);
       addText(card, "p", "Current status: " + order.status, "small");
+      addText(
+        card,
+        "p",
+        "Payment Method: " + (order.paymentMethod || "COD"),
+        "small"
+      );
+      addText(
+        card,
+        "p",
+        "Payment Status: " + (order.paymentStatus || "Pending"),
+        "small"
+      );
 
       const row = document.createElement("div");
       row.className = "status-row";
@@ -295,6 +307,48 @@ async function loadOrders() {
 
       row.append(select, saveBtn);
       card.appendChild(row);
+
+      if (order.paymentMethod === "UPI") {
+        const paymentRow = document.createElement("div");
+        paymentRow.className = "status-row";
+
+        const paymentButton = document.createElement("button");
+        paymentButton.textContent =
+          order.paymentStatus === "Paid" ? "Payment Verified" : "Mark Paid";
+        paymentButton.disabled = order.paymentStatus === "Paid";
+
+        paymentButton.addEventListener("click", async () => {
+          if (!confirm(
+            "మీ UPI యాప్‌లో డబ్బులు అందినట్లు నిర్ధారించారా?\\n\\n" +
+            "నిర్ధారించిన తర్వాత మాత్రమే Paid‌గా గుర్తించండి."
+          )) return;
+
+          paymentButton.disabled = true;
+          try {
+            await api(
+              "/api/admin/orders/" + encodeURIComponent(order.id) + "/payment",
+              {
+                method: "PATCH",
+                body: JSON.stringify({ paymentStatus: "Paid" })
+              }
+            );
+            message.textContent = "Payment verified for Order #" + order.id;
+            await loadOrders();
+          } catch (error) {
+            message.textContent = error.message;
+          } finally {
+            paymentButton.disabled = false;
+          }
+        });
+
+        paymentRow.appendChild(paymentButton);
+
+        if (order.paymentStatus === "Paid") {
+          addText(paymentRow, "span", "Verified", "small");
+        }
+
+        card.appendChild(paymentRow);
+      }
       ordersBox.appendChild(card);
     }
 
