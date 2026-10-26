@@ -710,21 +710,25 @@ document.getElementById("checkout").addEventListener("submit", async event => {
       ". Tracking Token: " + result.trackingToken +
       ". Save your Order ID and Tracking Token to check order status.";
 
-    const whatsappButton = document.createElement("a");
+    const whatsappMessage =
+      "🌶️ SPICY FOOD RESTAURANT\\n" +
+      "My Order ID: " + result.orderId + "\\n" +
+      "Total: " + money(result.total) + "\\n" +
+      "Please confirm my order.";
+
+    const whatsappButton = document.createElement("button");
+    whatsappButton.type = "button";
     whatsappButton.textContent = "📲 Send Order ID on WhatsApp";
-    whatsappButton.href = "https://wa.me/918106625268?text=" +
-      encodeURIComponent(
-        "🌶️ SPICY FOOD RESTAURANT\n" +
-        "My Order ID: " + result.orderId + "\n" +
-        "Total: " + money(result.total) + "\n" +
-        "Please confirm my order."
-      );
-    whatsappButton.removeAttribute("target");
-    whatsappButton.removeAttribute("rel");
     whatsappButton.style.cssText =
       "display:inline-block;margin-top:10px;padding:12px 16px;" +
-      "background:#25D366;color:white;border-radius:8px;" +
-      "text-decoration:none;font-weight:bold;";
+      "background:#25D366;color:white;border:0;border-radius:8px;" +
+      "font-weight:bold;cursor:pointer;";
+
+    whatsappButton.addEventListener("click", () => {
+      window.location.href =
+        "https://api.whatsapp.com/send?phone=918106625268&text=" +
+        encodeURIComponent(whatsappMessage);
+    });
 
     message.appendChild(document.createElement("br"));
     message.appendChild(whatsappButton);
