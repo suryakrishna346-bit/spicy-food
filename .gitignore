@@ -16,3 +16,6 @@ upgrade_menu.js
 upgrade_sales.js
 
 .DS_Store
+server.pre-postgres.js
+package.before-postgres.json
+package-lock.before-postgres.json

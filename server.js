@@ -2,28 +2,30 @@ require("dotenv").config();
 
 const express = require("express");
 const session = require("express-session");
-const fs = require("fs");
-const path = require("path");
 const crypto = require("crypto");
+const path = require("path");
+const { Pool } = require("pg");
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 if (!process.env.ADMIN_USER ||
     !process.env.ADMIN_PASSWORD ||
-    !process.env.SESSION_SECRET) {
-  console.error("Missing admin settings in .env");
+    !process.env.SESSION_SECRET ||
+    !process.env.DATABASE_URL) {
+  console.error("Missing required environment settings.");
   process.exit(1);
 }
 
-const dataDir = path.join(__dirname, "data");
-const ordersFile = path.join(dataDir, "orders.json");
-
-fs.mkdirSync(dataDir, { recursive: true });
-
-if (!fs.existsSync(ordersFile)) {
-  fs.writeFileSync(ordersFile, "[]");
+if (process.env.NODE_ENV === "production") {
+  app.set("trust proxy", 1);
 }
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  connectionTimeoutMillis: 10000,
+  ssl: { rejectUnauthorized: false }
+});
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "20kb" }));
@@ -36,29 +38,24 @@ app.use(session({
   cookie: {
     httpOnly: true,
     sameSite: "strict",
-    secure: false,
+    secure: process.env.NODE_ENV === "production",
     maxAge: 30 * 60 * 1000
   }
 }));
 
 app.use(express.static(path.join(__dirname, "public")));
 
-
-const menuFile = path.join(dataDir, "menu.json");
-
-function readMenu() {
-  const data = JSON.parse(fs.readFileSync(menuFile, "utf8"));
-  if (!Array.isArray(data)) throw new Error("Invalid menu file");
-  return data;
+function safeEqual(a, b) {
+  const aa = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  if (aa.length !== bb.length) return false;
+  return crypto.timingSafeEqual(aa, bb);
 }
 
-function saveMenu(items) {
-  const temp = menuFile + ".tmp";
-  fs.writeFileSync(temp, JSON.stringify(items, null, 2), { mode: 0o600 });
-  fs.renameSync(temp, menuFile);
+function adminOnly(req, res, next) {
+  if (req.session && req.session.isAdmin === true) return next();
+  return res.status(401).json({ error: "Admin login required." });
 }
-
-let menu = readMenu();
 
 function validMenuItem(body) {
   if (!body || typeof body.name !== "string" ||
@@ -77,199 +74,36 @@ function validMenuItem(body) {
   return { name, price, category };
 }
 
-
-function readOrders() {
-  const data = JSON.parse(fs.readFileSync(ordersFile, "utf8"));
-  if (!Array.isArray(data)) throw new Error("Invalid orders file");
-  return data;
+function mapOrder(row) {
+  return {
+    id: String(row.id),
+    name: row.name,
+    phone: row.phone,
+    address: row.address,
+    items: row.items,
+    total: row.total,
+    status: row.status,
+    createdAt: new Date(row.created_at).toISOString()
+  };
 }
 
-function saveOrders(orders) {
-  const tempFile = ordersFile + ".tmp";
-  fs.writeFileSync(tempFile, JSON.stringify(orders, null, 2), {
-    mode: 0o600
-  });
-  fs.renameSync(tempFile, ordersFile);
-}
-
-function adminOnly(req, res, next) {
-  if (req.session && req.session.isAdmin === true) {
-    return next();
-  }
-  return res.status(401).json({ error: "Admin login required." });
-}
-
-function safeEqual(a, b) {
-  const aa = Buffer.from(String(a));
-  const bb = Buffer.from(String(b));
-
-  if (aa.length !== bb.length) return false;
-  return crypto.timingSafeEqual(aa, bb);
-}
-
-// Public menu
-app.get("/api/menu", (req, res) => {
-  res.json(menu);
-});
-
-
-// Admin menu management
-app.post("/api/admin/menu", adminOnly, (req, res) => {
+app.get("/api/menu", async (req, res) => {
   try {
-    const item = validMenuItem(req.body);
-    if (!item) {
-      return res.status(400).json({ error: "Enter a valid name, price and category." });
-    }
-
-    const items = readMenu();
-    const id = items.reduce((max, x) => Math.max(max, Number(x.id) || 0), 0) + 1;
-    const created = { id, ...item };
-    items.push(created);
-    saveMenu(items);
-    menu = items;
-    res.status(201).json(created);
-  } catch (error) {
-    console.error("Menu create failed:", error.message);
-    res.status(500).json({ error: "Could not add menu item." });
-  }
-});
-
-app.patch("/api/admin/menu/:id", adminOnly, (req, res) => {
-  try {
-    const item = validMenuItem(req.body);
-    if (!item) {
-      return res.status(400).json({ error: "Enter a valid name, price and category." });
-    }
-
-    const items = readMenu();
-    const index = items.findIndex(x => String(x.id) === req.params.id);
-    if (index < 0) return res.status(404).json({ error: "Menu item not found." });
-
-    items[index] = { id: items[index].id, ...item };
-    saveMenu(items);
-    menu = items;
-    res.json(items[index]);
-  } catch (error) {
-    console.error("Menu update failed:", error.message);
-    res.status(500).json({ error: "Could not update menu item." });
-  }
-});
-
-app.delete("/api/admin/menu/:id", adminOnly, (req, res) => {
-  try {
-    const items = readMenu();
-    const updated = items.filter(x => String(x.id) !== req.params.id);
-    if (updated.length === items.length) {
-      return res.status(404).json({ error: "Menu item not found." });
-    }
-
-    saveMenu(updated);
-    menu = updated;
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Menu delete failed:", error.message);
-    res.status(500).json({ error: "Could not delete menu item." });
-  }
-});
-
-// Customer order submission
-app.post("/api/orders", (req, res) => {
-  const { name, phone, address, items } = req.body;
-
-  if (
-    typeof name !== "string" ||
-    typeof phone !== "string" ||
-    typeof address !== "string" ||
-    !Array.isArray(items)
-  ) {
-    return res.status(400).json({ error: "Invalid order details." });
-  }
-
-  if (
-    name.trim().length < 2 ||
-    name.trim().length > 80 ||
-    !/^[0-9+\-\s()]{10,20}$/.test(phone.trim()) ||
-    address.trim().length < 8 ||
-    address.trim().length > 500 ||
-    items.length < 1 ||
-    items.length > 30
-  ) {
-    return res.status(400).json({ error: "Please check your details." });
-  }
-
-  const quantities = new Map();
-
-  for (const item of items) {
-    if (
-      !item ||
-      !Number.isSafeInteger(item.id) ||
-      !Number.isSafeInteger(item.quantity) ||
-      item.quantity < 1 ||
-      item.quantity > 20 ||
-      !menu.some(d => d.id === item.id)
-    ) {
-      return res.status(400).json({ error: "Invalid menu item." });
-    }
-
-    quantities.set(
-      item.id,
-      (quantities.get(item.id) || 0) + item.quantity
+    const result = await pool.query(
+      "SELECT id, name, price, category FROM menu_items ORDER BY id"
     );
-  }
-
-  if ([...quantities.values()].some(q => q > 20)) {
-    return res.status(400).json({ error: "Quantity limit exceeded." });
-  }
-
-  const orderItems = [...quantities.entries()].map(([id, quantity]) => {
-    const dish = menu.find(d => d.id === id);
-    return {
-      id,
-      name: dish.name,
-      price: dish.price,
-      quantity,
-      subtotal: dish.price * quantity
-    };
-  });
-
-  const total = orderItems.reduce((sum, item) => sum + item.subtotal, 0);
-
-  try {
-    const orders = readOrders();
-
-    const order = {
-      id: Date.now(),
-      name: name.trim(),
-      phone: phone.trim(),
-      address: address.trim(),
-      items: orderItems,
-      total,
-      status: "Pending",
-      createdAt: new Date().toISOString()
-    };
-
-    orders.push(order);
-    saveOrders(orders);
-
-    return res.status(201).json({
-      success: true,
-      orderId: order.id,
-      total,
-      message: "Order received successfully."
-    });
+    res.json(result.rows);
   } catch (error) {
-    console.error("Order save failed:", error.message);
-    return res.status(500).json({ error: "Could not save order." });
+    console.error("Menu read failed:", error.code || error.message);
+    res.status(500).json({ error: "Could not load menu." });
   }
 });
 
-// Do not cache admin API responses
 app.use("/api/admin", (req, res, next) => {
   res.set("Cache-Control", "no-store");
   next();
 });
 
-// Admin login
 const loginAttempts = new Map();
 
 app.post("/api/admin/login", (req, res, next) => {
@@ -289,9 +123,7 @@ app.post("/api/admin/login", (req, res, next) => {
   }
 
   const { username, password } = req.body || {};
-
-  const valid =
-    typeof username === "string" &&
+  const valid = typeof username === "string" &&
     typeof password === "string" &&
     safeEqual(username, process.env.ADMIN_USER) &&
     safeEqual(password, process.env.ADMIN_PASSWORD);
@@ -299,16 +131,16 @@ app.post("/api/admin/login", (req, res, next) => {
   if (!valid) {
     attempt.count++;
     loginAttempts.set(ip, attempt);
-    return res.status(401).json({ error: "Invalid username or password." });
+    return res.status(401).json({
+      error: "Invalid username or password."
+    });
   }
 
   loginAttempts.delete(ip);
 
   req.session.regenerate(err => {
     if (err) return next(err);
-
     req.session.isAdmin = true;
-
     req.session.save(err => {
       if (err) return next(err);
       res.json({ success: true });
@@ -316,61 +148,264 @@ app.post("/api/admin/login", (req, res, next) => {
   });
 });
 
-// Check session
 app.get("/api/admin/me", adminOnly, (req, res) => {
   res.json({ authenticated: true });
 });
 
-// Read all orders
-app.get("/api/admin/orders", adminOnly, (req, res) => {
+app.get("/api/admin/menu", adminOnly, async (req, res) => {
   try {
-    const orders = readOrders().sort(
-      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    const result = await pool.query(
+      "SELECT id, name, price, category FROM menu_items ORDER BY id"
     );
-    res.json(orders);
+    res.json(result.rows);
   } catch (error) {
-    console.error(error.message);
+    console.error("Admin menu read failed:", error.code || error.message);
+    res.status(500).json({ error: "Could not read menu." });
+  }
+});
+
+app.post("/api/admin/menu", adminOnly, async (req, res) => {
+  const item = validMenuItem(req.body);
+  if (!item) {
+    return res.status(400).json({
+      error: "Enter a valid name, price and category."
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO menu_items (id, name, price, category)
+       VALUES (
+         (SELECT COALESCE(MAX(id), 0) + 1 FROM menu_items),
+         $1, $2, $3
+       )
+       RETURNING id, name, price, category`,
+      [item.name, item.price, item.category]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error("Menu create failed:", error.code || error.message);
+    res.status(500).json({ error: "Could not add menu item." });
+  }
+});
+
+app.patch("/api/admin/menu/:id", adminOnly, async (req, res) => {
+  const item = validMenuItem(req.body);
+  if (!item) {
+    return res.status(400).json({
+      error: "Enter a valid name, price and category."
+    });
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id)) {
+    return res.status(400).json({ error: "Invalid menu item ID." });
+  }
+
+  try {
+    const result = await pool.query(
+      `UPDATE menu_items SET name=$1, price=$2, category=$3
+       WHERE id=$4 RETURNING id, name, price, category`,
+      [item.name, item.price, item.category, id]
+    );
+    if (!result.rowCount) {
+      return res.status(404).json({ error: "Menu item not found." });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Menu update failed:", error.code || error.message);
+    res.status(500).json({ error: "Could not update menu item." });
+  }
+});
+
+app.delete("/api/admin/menu/:id", adminOnly, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id)) {
+    return res.status(400).json({ error: "Invalid menu item ID." });
+  }
+
+  try {
+    const result = await pool.query(
+      "DELETE FROM menu_items WHERE id=$1 RETURNING id", [id]
+    );
+    if (!result.rowCount) {
+      return res.status(404).json({ error: "Menu item not found." });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Menu delete failed:", error.code || error.message);
+    res.status(500).json({ error: "Could not delete menu item." });
+  }
+});
+
+app.post("/api/orders", async (req, res) => {
+  const { name, phone, address, items } = req.body || {};
+
+  if (typeof name !== "string" || typeof phone !== "string" ||
+      typeof address !== "string" || !Array.isArray(items)) {
+    return res.status(400).json({ error: "Invalid order details." });
+  }
+
+  if (name.trim().length < 2 || name.trim().length > 80 ||
+      !/^[0-9+\-\s()]{10,20}$/.test(phone.trim()) ||
+      address.trim().length < 8 || address.trim().length > 500 ||
+      items.length < 1 || items.length > 30) {
+    return res.status(400).json({ error: "Please check your details." });
+  }
+
+  const quantities = new Map();
+
+  for (const item of items) {
+    if (!item || !Number.isSafeInteger(item.id) ||
+        !Number.isSafeInteger(item.quantity) ||
+        item.quantity < 1 || item.quantity > 20) {
+      return res.status(400).json({ error: "Invalid menu item." });
+    }
+
+    quantities.set(
+      item.id, (quantities.get(item.id) || 0) + item.quantity
+    );
+  }
+
+  if ([...quantities.values()].some(q => q > 20)) {
+    return res.status(400).json({ error: "Quantity limit exceeded." });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const ids = [...quantities.keys()];
+    const menuResult = await client.query(
+      `SELECT id, name, price FROM menu_items
+       WHERE id = ANY($1::int[]) ORDER BY id FOR SHARE`,
+      [ids]
+    );
+
+    if (menuResult.rowCount !== ids.length) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({ error: "Invalid menu item." });
+    }
+
+    const dishes = new Map(menuResult.rows.map(d => [d.id, d]));
+    const orderItems = [...quantities.entries()].map(([id, quantity]) => {
+      const dish = dishes.get(id);
+      return {
+        id,
+        name: dish.name,
+        price: dish.price,
+        quantity,
+        subtotal: dish.price * quantity
+      };
+    });
+
+    const total = orderItems.reduce(
+      (sum, item) => sum + item.subtotal, 0
+    );
+    const orderId = Date.now();
+
+    const result = await client.query(
+      `INSERT INTO orders
+       (id, name, phone, address, items, total, status, created_at)
+       VALUES ($1,$2,$3,$4,$5::jsonb,$6,'Pending',NOW())
+       RETURNING id, total`,
+      [
+        orderId, name.trim(), phone.trim(), address.trim(),
+        JSON.stringify(orderItems), total
+      ]
+    );
+
+    await client.query("COMMIT");
+    res.status(201).json({
+      success: true,
+      orderId: String(result.rows[0].id),
+      total: result.rows[0].total,
+      message: "Order received successfully."
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Order save failed:", error.code || error.message);
+    res.status(500).json({ error: "Could not save order." });
+  } finally {
+    client.release();
+  }
+});
+
+app.get("/api/admin/orders", adminOnly, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, phone, address, items, total, status, created_at
+       FROM orders ORDER BY created_at DESC`
+    );
+    res.json(result.rows.map(mapOrder));
+  } catch (error) {
+    console.error("Orders read failed:", error.code || error.message);
     res.status(500).json({ error: "Could not read orders." });
   }
 });
 
-// Update order status
-app.patch("/api/admin/orders/:id/status", adminOnly, (req, res) => {
+app.patch("/api/admin/orders/:id/status", adminOnly, async (req, res) => {
   const allowed = ["Pending", "Preparing", "Delivered", "Cancelled"];
   const { status } = req.body || {};
-
   if (!allowed.includes(status)) {
     return res.status(400).json({ error: "Invalid order status." });
   }
 
   try {
-    const orders = readOrders();
-    const order = orders.find(o => String(o.id) === req.params.id);
-
-    if (!order) {
+    const result = await pool.query(
+      `UPDATE orders SET status=$1 WHERE id=$2
+       RETURNING id, name, phone, address, items, total, status, created_at`,
+      [status, req.params.id]
+    );
+    if (!result.rowCount) {
       return res.status(404).json({ error: "Order not found." });
     }
-
-    order.status = status;
-    saveOrders(orders);
-
-    res.json({ success: true, order });
+    res.json({ success: true, order: mapOrder(result.rows[0]) });
   } catch (error) {
-    console.error(error.message);
+    console.error("Order update failed:", error.code || error.message);
     res.status(500).json({ error: "Could not update order." });
   }
 });
 
-// Logout
 app.post("/api/admin/logout", adminOnly, (req, res, next) => {
   req.session.destroy(err => {
     if (err) return next(err);
-    res.clearCookie("spicy_admin");
+    res.clearCookie("spicy_admin", {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production"
+    });
     res.json({ success: true });
   });
 });
 
-app.listen(PORT, "127.0.0.1", () => {
-  console.log(`Spicy Food server: http://127.0.0.1:${PORT}`);
-  console.log(`Admin Dashboard: http://127.0.0.1:${PORT}/admin.html`);
+let server;
+
+async function start() {
+  const client = await pool.connect();
+  try {
+    await client.query("SELECT 1");
+    const menuCount = await client.query(
+      "SELECT COUNT(*)::int AS count FROM menu_items"
+    );
+    console.log("PostgreSQL connected. Menu items:", menuCount.rows[0].count);
+  } finally {
+    client.release();
+  }
+
+  server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Spicy Food server listening on port ${PORT}`);
+  });
+}
+
+start().catch(error => {
+  console.error("Server startup failed:", error.code || error.message);
+  process.exit(1);
 });
+
+async function shutdown() {
+  if (server) server.close();
+  await pool.end();
+}
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
