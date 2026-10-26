@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#15100d">
+
+<title>Spicy Food Restaurant</title>
+
+<style>
+:root {
+  --bg: #120f0d;
+  --card: #211914;
+  --gold: #ffbd45;
+  --red: #e7472f;
+  --text: #fff7eb;
+  --muted: #c7b9a8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #17110ef5;
+  border-bottom: 1px solid #493326;
+  padding: 15px;
+}
+
+.nav {
+  max-width: 1150px;
+  margin: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  font-weight: 900;
+  font-size: 19px;
+}
+
+.logo span {
+  color: var(--gold);
+}
+
+.cart-button,
+.primary {
+  border: 0;
+  border-radius: 10px;
+  background: var(--red);
+  color: white;
+  padding: 12px 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hero {
+  padding: 75px 20px;
+  text-align: center;
+  background:
+    linear-gradient(#100b09b8, #100b09e8),
+    url('https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=1400&q=80')
+    center/cover;
+}
+
+.hero h1 {
+  font-size: clamp(35px, 8vw, 65px);
+  margin: 10px 0;
+}
+
+.hero h1 span {
+  color: var(--gold);
+}
+
+.hero p {
+  color: #f1dfca;
+  line-height: 1.7;
+}
+
+.badge {
+  color: var(--gold);
+  letter-spacing: 3px;
+  font-weight: 800;
+}
+
+.container {
+  max-width: 1150px;
+  margin: auto;
+  padding: 25px 16px 60px;
+}
+
+.toolbar {
+  display: grid;
+  gap: 12px;
+  margin: 22px 0;
+}
+
+input,
+textarea {
+  width: 100%;
+  background: #211914;
+  color: white;
+  border: 1px solid #5a4433;
+  border-radius: 10px;
+  padding: 13px;
+  font: inherit;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filters button {
+  background: #261b15;
+  color: white;
+  border: 1px solid #59402d;
+  padding: 10px 13px;
+  border-radius: 30px;
+  cursor: pointer;
+}
+
+.filters button.active {
+  background: var(--gold);
+  color: #24160b;
+}
+
+h2 {
+  font-size: 27px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 17px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid #3d2b20;
+  border-radius: 15px;
+  overflow: hidden;
+}
+
+.card img {
+  width: 100%;
+  height: 180px;
+  object-fit: cover;
+  background: #30231b;
+}
+
+.card-body {
+  padding: 13px;
+}
+
+.card h3 {
+  font-size: 16px;
+  line-height: 1.4;
+  margin: 8px 0;
+}
+
+.category {
+  font-size: 11px;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.price {
+  font-weight: 900;
+  font-size: 19px;
+  color: var(--gold);
+}
+
+.card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.add {
+  border: 0;
+  background: var(--gold);
+  color: #21140b;
+  padding: 10px 13px;
+  border-radius: 9px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+#cart {
+  margin-top: 45px;
+  background: var(--card);
+  border: 1px solid #493326;
+  padding: 18px;
+  border-radius: 15px;
+}
+
+.cart-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #493326;
+}
+
+.qty {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.qty button {
+  background: #493326;
+  color: white;
+  border: 0;
+  padding: 7px 11px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.total {
+  font-size: 23px;
+  color: var(--gold);
+  font-weight: 900;
+  margin: 20px 0;
+}
+
+.form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+#message {
+  margin-top: 15px;
+  padding: 12px;
+  border-radius: 9px;
+  overflow-wrap: anywhere;
+}
+
+footer {
+  text-align: center;
+  border-top: 1px solid #493326;
+  padding: 28px 15px;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+@media (max-width: 750px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .card img {
+    height: 145px;
+  }
+
+  .card-body {
+    padding: 10px;
+  }
+
+  .logo {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 390px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card img {
+    height: 210px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="nav">
+    <div class="logo">🌶️ SPICY <span>FOOD RESTAURANT</span></div>
+    <button class="cart-button" onclick="goCart()">
+      🛒 Cart <span id="cartCount">0</span>
+    </button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="badge">AUTHENTIC TELUGU RUCHULU</div>
+  <h1>Real Spice.<br><span>Big Flavour.</span></h1>
+  <p>Andhra & Telangana specials made for true spice lovers.</p>
+  <button class="primary" onclick="document.querySelector('#menu').scrollIntoView()">
+    Explore Menu ↓
+  </button>
+</section>
+
+<main class="container" id="menu">
+
+  <h2>🍗 Our Menu</h2>
+  <p style="color:#c7b9a8">Fresh flavours. Local favourites. Reasonable prices.</p>
+
+  <div class="toolbar">
+    <input
+      id="search"
+      type="search"
+      placeholder="🔍 Search food items..."
+    >
+
+    <div class="filters">
+      <button class="active" data-cat="All">All</button>
+      <button data-cat="Starters">Starters</button>
+      <button data-cat="Curries">Curries</button>
+      <button data-cat="Rice & Biryanis">Rice & Biryanis</button>
+      <button data-cat="Sweets & Drinks">Sweets & Drinks</button>
+    </div>
+  </div>
+
+  <div class="grid" id="menuGrid"></div>
+
+  <section id="cart">
+    <h2>🛒 Your Cart</h2>
+
+    <div id="cartItems">Your cart is empty.</div>
+
+    <div class="total">
+      Total: ₹<span id="total">0</span>
+    </div>
+
+    <h3>Delivery Details</h3>
+
+    <form id="checkout">
+      <div class="form-grid">
+
+        <input
+          name="name"
+          placeholder="Customer Name"
+          minlength="2"
+          maxlength="80"
+          required
+        >
+
+        <input
+          name="phone"
+          type="tel"
+          placeholder="Phone Number"
+          minlength="10"
+          maxlength="20"
+          required
+        >
+
+        <textarea
+          name="address"
+          placeholder="Full Delivery Address"
+          minlength="8"
+          maxlength="500"
+          rows="3"
+          required
+        ></textarea>
+
+        <button class="primary" type="submit">
+          Place Order
+        </button>
+
+      </div>
+    </form>
+
+    <div id="message" role="status" aria-live="polite"></div>
+  </section>
+
+</main>
+
+<footer>
+  <strong style="color:#ffbd45">SPICY FOOD RESTAURANT</strong>
+  <br>
+  Authentic Telugu Ruchulu & Spicy Delights
+  <br>
+  Hyderabad, Telangana
+  <br>
+  Parcel Available · Come Hungry, Leave Happy!
+</footer>
+
+<script>
+const photoMap = {
+  "Guntur Chilli Chicken": "photo-1603894584373-5ac82b2ae398",
+  "Royyala Vepudu": "photo-1565680018434-b513d5e5fd47",
+  "Kodi Guddu Ulli Karam": "photo-1601050690597-df0568f70950",
+  "Sora Chepa Puttu": "photo-1519708227418-c8fd9a32b7a2",
+  "Koramenu Tawa Roast": "photo-1510130387422-82bed34b37e9",
+  "Boti Fry & Kodi Liver Vepudu Combo": "photo-1555939594-58d7cb561ad1",
+
+  "Telangana Mutton Paya": "photo-1547592180-85f173990554",
+  "Gongura Mutton": "photo-1633945274405-b6c8069047b0",
+  "Gongura Chicken": "photo-1603894584373-5ac82b2ae398",
+  "Natu Kodi Pulusu": "photo-1565557623262-b51c2513a641",
+  "Nellore Chepala Pulusu": "photo-1574781330855-d0db8cc6a79c",
+  "Bommidala Pulusu": "photo-1519708227418-c8fd9a32b7a2",
+  "Mutton Bone Marrow Curry": "photo-1596797038530-2c107229654b",
+
+  "Bagara Annam & Mutton Dalcha": "photo-1546833999-b9f581a1996d",
+  "Military Chicken & Bagara Rice": "photo-1563379091339-03246963d96c",
+  "Ulavacharu Kodi Pulao": "photo-1589302168068-964664d93dc0",
+  "Gongura Mutton Biryani": "photo-1563379091339-03246963d96c",
+  "Gongura Chicken Biryani": "photo-1589302168068-964664d93dc0",
+  "Avakaya Kodi Pulao": "photo-1633945274405-b6c8069047b0",
+  "Chitti Muthyala Kodi Pulao": "photo-1546833999-b9f581a1996d",
+  "Mutton Kheema Moti Pulao": "photo-1596797038530-2c107229654b",
+
+  "Double Ka Meetha": "photo-1484723091739-30a097e8f929",
+  "Gulab Jamun": "photo-1571115764595-644a1f56a55c",
+  "Badam Milk": "photo-1544145945-f90425340c7e"
+};
+let menu = [];
+let cart = {};
+let activeCategory = "All";
+
+const grid = document.getElementById("menuGrid");
+const search = document.getElementById("search");
+const message = document.getElementById("message");
+
+function money(n) {
+  return "₹" + Number(n).toLocaleString("en-IN");
+}
+
+async function loadMenu() {
+  try {
+    const response = await fetch("/api/menu");
+
+    if (!response.ok) {
+      throw new Error("Menu loading failed");
+    }
+
+    menu = await response.json();
+    renderMenu();
+  } catch (error) {
+    grid.textContent =
+      "Menu load avvaledu. Server running lo undo check cheyyandi.";
+  }
+}
+
+function renderMenu() {
+  grid.innerHTML = "";
+
+  const query = search.value.trim().toLowerCase();
+
+  const filtered = menu.filter(item => {
+    const matchesCategory =
+      activeCategory === "All" ||
+      item.category === activeCategory;
+
+    return matchesCategory &&
+      item.name.toLowerCase().includes(query);
+  });
+
+  if (!filtered.length) {
+    grid.textContent = "No dishes found.";
+    return;
+  }
+
+  filtered.forEach(item => {
+    const card = document.createElement("article");
+    card.className = "card";
+
+    const img = document.createElement("img");
+    img.loading = "lazy";
+    img.alt = item.name;
+
+const photo = photoMap[item.name];
+    img.src =
+      "https://images.unsplash.com/" +
+      photo +
+      "?auto=format&fit=crop&w=650&q=80";
+
+    img.onerror = () => {
+      img.onerror = null;
+      img.src =
+        "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=650&q=80";
+    };
+
+    const body = document.createElement("div");
+    body.className = "card-body";
+
+    const cat = document.createElement("div");
+    cat.className = "category";
+    cat.textContent = item.category;
+
+    const title = document.createElement("h3");
+    title.textContent = item.name;
+
+    const bottom = document.createElement("div");
+    bottom.className = "card-bottom";
+
+    const price = document.createElement("span");
+    price.className = "price";
+    price.textContent = money(item.price);
+
+    const button = document.createElement("button");
+    button.className = "add";
+    button.textContent = "+ Add";
+
+    button.onclick = () => addToCart(item.id);
+
+    bottom.append(price, button);
+    body.append(cat, title, bottom);
+    card.append(img, body);
+    grid.appendChild(card);
+  });
+}
+
+function addToCart(id) {
+  cart[id] = (cart[id] || 0) + 1;
+  renderCart();
+}
+
+function changeQty(id, delta) {
+  cart[id] = (cart[id] || 0) + delta;
+
+  if (cart[id] <= 0) {
+    delete cart[id];
+  }
+
+  renderCart();
+}
+
+function renderCart() {
+  const root = document.getElementById("cartItems");
+  root.innerHTML = "";
+
+  let count = 0;
+  let total = 0;
+
+  const entries = Object.entries(cart);
+
+  if (!entries.length) {
+    root.textContent = "Your cart is empty.";
+  }
+
+  entries.forEach(([id, qty]) => {
+    const item = menu.find(d => d.id === Number(id));
+
+    if (!item) return;
+
+    count += qty;
+    total += item.price * qty;
+
+    const row = document.createElement("div");
+    row.className = "cart-row";
+
+    const info = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = item.name;
+
+    const subtotal = document.createElement("div");
+    subtotal.textContent = money(item.price * qty);
+
+    info.append(title, subtotal);
+
+    const controls = document.createElement("div");
+    controls.className = "qty";
+
+    const minus = document.createElement("button");
+    minus.textContent = "−";
+    minus.onclick = () => changeQty(item.id, -1);
+
+    const number = document.createElement("span");
+    number.textContent = qty;
+
+    const plus = document.createElement("button");
+    plus.textContent = "+";
+    plus.onclick = () => {
+      if (cart[item.id] < 20) {
+        changeQty(item.id, 1);
+      }
+    };
+
+    controls.append(minus, number, plus);
+    row.append(info, controls);
+    root.appendChild(row);
+  });
+
+  document.getElementById("cartCount").textContent = count;
+  document.getElementById("total").textContent = total;
+}
+
+function goCart() {
+  document.getElementById("cart").scrollIntoView({
+    behavior: "smooth"
+  });
+}
+
+search.addEventListener("input", renderMenu);
+
+document.querySelectorAll("[data-cat]").forEach(button => {
+  button.addEventListener("click", () => {
+    activeCategory = button.dataset.cat;
+
+    document.querySelectorAll("[data-cat]").forEach(b => {
+      b.classList.toggle("active", b === button);
+    });
+
+    renderMenu();
+  });
+});
+
+document.getElementById("checkout").addEventListener("submit", async event => {
+  event.preventDefault();
+
+  if (!Object.keys(cart).length) {
+    message.textContent = "Please add items to your cart first.";
+    return;
+  }
+
+  const form = event.currentTarget;
+  const button = form.querySelector('button[type="submit"]');
+
+  const formData = new FormData(form);
+
+  const order = {
+    name: formData.get("name").trim(),
+    phone: formData.get("phone").trim(),
+    address: formData.get("address").trim(),
+    items: Object.entries(cart).map(([id, quantity]) => ({
+      id: Number(id),
+      quantity
+    }))
+  };
+
+  button.disabled = true;
+  button.textContent = "Submitting...";
+  message.textContent = "";
+
+  try {
+    const response = await fetch("/api/orders", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(order)
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Order failed");
+    }
+
+    message.textContent =
+      "✅ Order #" + result.orderId +
+      " received! Total: " + money(result.total) +
+      ". Please contact the restaurant to confirm delivery.";
+
+    cart = {};
+    renderCart();
+    form.reset();
+
+  } catch (error) {
+    message.textContent = "❌ " + error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Place Order";
+  }
+});
+
+loadMenu();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spicy Food | Admin Dashboard</title>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#100b0b;color:#fff;font-family:Arial,sans-serif}
+header{background:#241010;padding:20px;border-bottom:2px solid #e9a52b}
+header h1{margin:0;color:#ffbd45;font-size:23px}
+header p{margin:7px 0 0;color:#ddd}
+main{max-width:1100px;margin:auto;padding:18px}
+.panel,.stat,.order{background:#211717;border:1px solid #493030;border-radius:12px;padding:16px;margin-bottom:16px}
+h2{color:#ffbd45}
+input,button,select{font:inherit;border-radius:8px;padding:12px;border:1px solid #634343}
+input{display:block;width:100%;margin:10px 0;background:#130e0e;color:white}
+button{background:#e9a52b;color:#20120a;font-weight:bold;cursor:pointer;border:0}
+button:hover{opacity:.9}
+.secondary{background:#4b3333;color:white}
+.hidden{display:none!important}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat strong{display:block;font-size:25px;color:#ffbd45;margin-top:8px}
+.order-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.order h3{margin:4px 0;color:#ffbd45}
+.small{color:#ccc;font-size:14px;line-height:1.7;overflow-wrap:anywhere}
+.items{padding-left:20px;line-height:1.8}
+.status-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.status-row select{background:#130e0e;color:white;flex:1;min-width:140px}
+#message{margin:12px 0;color:#ffbd45}
+@media(min-width:700px){#loginPanel{max-width:450px;margin:35px auto}}
+</style>
+</head>
+
+<body>
+<header>
+  <h1>🌶️ SPICY FOOD RESTAURANT</h1>
+  <p>Admin Dashboard · Hyderabad</p>
+</header>
+
+<main>
+  <section id="loginPanel" class="panel">
+    <h2>Admin Login</h2>
+    <form id="loginForm">
+      <label>Username</label>
+      <input id="username" autocomplete="username" required>
+      <label>Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Login</button>
+    </form>
+    <p id="loginMessage" class="small" role="status"></p>
+  </section>
+
+  <section id="dashboard" class="hidden">
+    <div class="order-top">
+      <h2>Orders Overview</h2>
+      <div>
+        <button id="refreshBtn">Refresh</button>
+        <button id="logoutBtn" class="secondary">Logout</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">Total Orders<strong id="totalOrders">0</strong></div>
+      <div class="stat">Pending<strong id="pendingOrders">0</strong></div>
+      <div class="stat">Preparing<strong id="preparingOrders">0</strong></div>
+      <div class="stat">Delivered Sales<strong id="sales">₹0</strong></div>
+    </div>
+
+    <p id="message" role="status"></p>
+    <div id="orders"></div>
+  </section>
+</main>
+
+<script>
+const loginPanel = document.getElementById("loginPanel");
+const dashboard = document.getElementById("dashboard");
+const loginForm = document.getElementById("loginForm");
+const loginMessage = document.getElementById("loginMessage");
+const message = document.getElementById("message");
+const ordersBox = document.getElementById("orders");
+
+const money = n => "₹" + Number(n).toLocaleString("en-IN");
+
+async function api(url, options = {}) {
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    if (response.status === 401) showLogin();
+    throw new Error(data.error || "Request failed");
+  }
+
+  return data;
+}
+
+function showLogin() {
+  loginPanel.classList.remove("hidden");
+  dashboard.classList.add("hidden");
+}
+
+function showDashboard() {
+  loginPanel.classList.add("hidden");
+  dashboard.classList.remove("hidden");
+}
+
+loginForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  loginMessage.textContent = "Logging in...";
+
+  try {
+    await api("/api/admin/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value
+      })
+    });
+
+    document.getElementById("password").value = "";
+    loginMessage.textContent = "";
+    showDashboard();
+    await loadOrders();
+  } catch (error) {
+    loginMessage.textContent = error.message;
+  }
+});
+
+function addText(parent, tag, text, className) {
+  const el = document.createElement(tag);
+  el.textContent = text;
+  if (className) el.className = className;
+  parent.appendChild(el);
+  return el;
+}
+
+async function loadOrders() {
+  message.textContent = "Loading orders...";
+
+  try {
+    const orders = await api("/api/admin/orders");
+
+    document.getElementById("totalOrders").textContent = orders.length;
+    document.getElementById("pendingOrders").textContent =
+      orders.filter(o => o.status === "Pending").length;
+    document.getElementById("preparingOrders").textContent =
+      orders.filter(o => o.status === "Preparing").length;
+    document.getElementById("sales").textContent = money(
+      orders.filter(o => o.status === "Delivered")
+        .reduce((sum, o) => sum + Number(o.total || 0), 0)
+    );
+
+    ordersBox.replaceChildren();
+
+    if (!orders.length) {
+      addText(ordersBox, "div", "No orders yet.", "panel");
+      message.textContent = "";
+      return;
+    }
+
+    for (const order of orders) {
+      const card = document.createElement("article");
+      card.className = "order";
+
+      const top = document.createElement("div");
+      top.className = "order-top";
+      card.appendChild(top);
+
+      const heading = document.createElement("div");
+      top.appendChild(heading);
+      addText(heading, "h3", "Order #" + order.id);
+      addText(heading, "div", new Date(order.createdAt).toLocaleString(), "small");
+
+      addText(top, "strong", money(order.total));
+
+      addText(card, "p", "Customer: " + order.name, "small");
+      addText(card, "p", "Phone: " + order.phone, "small");
+      addText(card, "p", "Address: " + order.address, "small");
+
+      addText(card, "h4", "Items");
+      const list = document.createElement("ul");
+      list.className = "items";
+
+      for (const item of order.items || []) {
+        addText(
+          list,
+          "li",
+          `${item.name} × ${item.quantity} — ${money(item.subtotal)}`
+        );
+      }
+
+      card.appendChild(list);
+      addText(card, "p", "Current status: " + order.status, "small");
+
+      const row = document.createElement("div");
+      row.className = "status-row";
+
+      const select = document.createElement("select");
+      for (const status of ["Pending", "Preparing", "Delivered", "Cancelled"]) {
+        const option = document.createElement("option");
+        option.value = status;
+        option.textContent = status;
+        if (status === order.status) option.selected = true;
+        select.appendChild(option);
+      }
+
+      const saveBtn = document.createElement("button");
+      saveBtn.textContent = "Update Status";
+      saveBtn.addEventListener("click", async () => {
+        saveBtn.disabled = true;
+        try {
+          await api("/api/admin/orders/" + encodeURIComponent(order.id) + "/status", {
+            method: "PATCH",
+            body: JSON.stringify({ status: select.value })
+          });
+          message.textContent = "Order status updated.";
+          await loadOrders();
+        } catch (error) {
+          message.textContent = error.message;
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+
+      row.append(select, saveBtn);
+      card.appendChild(row);
+      ordersBox.appendChild(card);
+    }
+
+    message.textContent = "Orders loaded.";
+  } catch (error) {
+    message.textContent = error.message;
+  }
+}
+
+document.getElementById("refreshBtn").addEventListener("click", loadOrders);
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  try {
+    await api("/api/admin/logout", {
+      method: "POST",
+      body: "{}"
+    });
+  } catch (_) {}
+
+  showLogin();
+  message.textContent = "";
+  loginMessage.textContent = "Logged out.";
+});
+
+(async function checkSession() {
+  try {
+    await api("/api/admin/me");
+    showDashboard();
+    await loadOrders();
+  } catch (_) {
+    showLogin();
+  }
+})();
+</script>
+</body>
+</html>

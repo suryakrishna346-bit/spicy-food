@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spicy Food | Admin Dashboard</title>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#100b0b;color:#fff;font-family:Arial,sans-serif}
+header{background:#241010;padding:20px;border-bottom:2px solid #e9a52b}
+header h1{margin:0;color:#ffbd45;font-size:23px}
+header p{margin:7px 0 0;color:#ddd}
+main{max-width:1100px;margin:auto;padding:18px}
+.panel,.stat,.order{background:#211717;border:1px solid #493030;border-radius:12px;padding:16px;margin-bottom:16px}
+h2{color:#ffbd45}
+input,button,select{font:inherit;border-radius:8px;padding:12px;border:1px solid #634343}
+input{display:block;width:100%;margin:10px 0;background:#130e0e;color:white}
+button{background:#e9a52b;color:#20120a;font-weight:bold;cursor:pointer;border:0}
+button:hover{opacity:.9}
+.secondary{background:#4b3333;color:white}
+.hidden{display:none!important}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.stat strong{display:block;font-size:25px;color:#ffbd45;margin-top:8px}
+.order-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.order h3{margin:4px 0;color:#ffbd45}
+.small{color:#ccc;font-size:14px;line-height:1.7;overflow-wrap:anywhere}
+.items{padding-left:20px;line-height:1.8}
+.status-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.status-row select{background:#130e0e;color:white;flex:1;min-width:140px}
+#message{margin:12px 0;color:#ffbd45}
+@media(min-width:700px){#loginPanel{max-width:450px;margin:35px auto}}
+
+.menu-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
+.menu-form input,.menu-form select{margin:0;min-width:0}
+.menu-item{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid #493030}
+.menu-item h3{margin:0 0 5px;color:#ffbd45}
+.menu-actions{display:flex;gap:6px;flex-wrap:wrap}
+.menu-actions button{padding:9px}
+.danger{background:#b52b35;color:white}
+.section-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+@media(max-width:480px){.menu-item{grid-template-columns:1fr}.menu-actions button{flex:1}}
+
+</style>
+</head>
+
+<body>
+<header>
+  <h1>🌶️ SPICY FOOD RESTAURANT</h1>
+  <p>Admin Dashboard · Hyderabad</p>
+</header>
+
+<main>
+  <section id="loginPanel" class="panel">
+    <h2>Admin Login</h2>
+    <form id="loginForm">
+      <label>Username</label>
+      <input id="username" autocomplete="username" required>
+      <label>Password</label>
+      <input id="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Login</button>
+    </form>
+    <p id="loginMessage" class="small" role="status"></p>
+  </section>
+
+  <section id="dashboard" class="hidden">
+    <div class="order-top">
+      <h2>Orders Overview</h2>
+      <div>
+        <button id="refreshBtn">Refresh</button>
+        <button id="logoutBtn" class="secondary">Logout</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">Total Orders<strong id="totalOrders">0</strong></div>
+      <div class="stat">Pending<strong id="pendingOrders">0</strong></div>
+      <div class="stat">Preparing Orders<strong id="preparingOrders">0</strong></div>
+      <div class="stat">Delivered Sales<strong id="sales">₹0</strong></div>
+      <div class="stat">Today's Sales<strong id="todaySales">₹0</strong></div>
+      <div class="stat">Today's Orders<strong id="todayOrders">0</strong></div>
+      <div class="stat">Delivered Orders<strong id="deliveredOrders">0</strong></div>
+      <div class="stat">Cancelled Orders<strong id="cancelledOrders">0</strong></div>
+    </div>
+
+
+    <section id="menuPanel" class="panel">
+      <div class="section-title">
+        <h2>🍽️ Menu Management</h2>
+        <button id="menuRefreshBtn" class="secondary" type="button">Refresh Menu</button>
+      </div>
+      <form id="menuForm">
+        <input id="menuItemId" type="hidden">
+        <div class="menu-form">
+          <input id="menuName" placeholder="Food item name" maxlength="100" required>
+          <input id="menuPrice" type="number" placeholder="Price ₹" min="1" max="100000" step="1" required>
+          <select id="menuCategory" required>
+            <option value="Starters">Starters</option>
+            <option value="Curries">Curries</option>
+            <option value="Rice & Biryanis">Rice & Biryanis</option>
+            <option value="Sweets & Drinks">Sweets & Drinks</option>
+          </select>
+        </div>
+        <button id="menuSubmitBtn" type="submit">Add Menu Item</button>
+        <button id="menuCancelBtn" class="secondary" type="button">Cancel Edit</button>
+      </form>
+      <p id="menuMessage" class="small" role="status"></p>
+      <div id="menuItems"></div>
+    </section>
+
+    <p id="message" role="status"></p>
+    <div id="orders"></div>
+  </section>
+</main>
+
+<script>
+const loginPanel = document.getElementById("loginPanel");
+const dashboard = document.getElementById("dashboard");
+const loginForm = document.getElementById("loginForm");
+const loginMessage = document.getElementById("loginMessage");
+const message = document.getElementById("message");
+const ordersBox = document.getElementById("orders");
+
+const money = n => "₹" + Number(n).toLocaleString("en-IN");
+
+async function api(url, options = {}) {
+  const response = await fetch(url, {
+    credentials: "same-origin",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    if (response.status === 401) showLogin();
+    throw new Error(data.error || "Request failed");
+  }
+
+  return data;
+}
+
+function showLogin() {
+  loginPanel.classList.remove("hidden");
+  dashboard.classList.add("hidden");
+}
+
+function showDashboard() {
+  loginPanel.classList.add("hidden");
+  dashboard.classList.remove("hidden");
+}
+
+loginForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  loginMessage.textContent = "Logging in...";
+
+  try {
+    await api("/api/admin/login", {
+      method: "POST",
+      body: JSON.stringify({
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value
+      })
+    });
+
+    document.getElementById("password").value = "";
+    loginMessage.textContent = "";
+    showDashboard();
+    await loadOrders();
+    await loadMenu();
+  } catch (error) {
+    loginMessage.textContent = error.message;
+  }
+});
+
+function addText(parent, tag, text, className) {
+  const el = document.createElement(tag);
+  el.textContent = text;
+  if (className) el.className = className;
+  parent.appendChild(el);
+  return el;
+}
+
+async function loadOrders() {
+  message.textContent = "Loading orders...";
+
+  try {
+    const orders = await api("/api/admin/orders");
+
+    document.getElementById("totalOrders").textContent = orders.length;
+    document.getElementById("pendingOrders").textContent =
+      orders.filter(o => o.status === "Pending").length;
+    document.getElementById("preparingOrders").textContent =
+      orders.filter(o => o.status === "Preparing").length;
+    const delivered = orders.filter(o => o.status === "Delivered");
+
+    document.getElementById("sales").textContent = money(
+      delivered.reduce((sum, o) => sum + Number(o.total || 0), 0)
+    );
+
+    const today = new Date();
+    const isToday = order => {
+      const d = new Date(order.createdAt);
+      return !Number.isNaN(d.getTime()) &&
+        d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate();
+    };
+
+    const todaysOrders = orders.filter(isToday);
+    const todaysDelivered = todaysOrders.filter(o => o.status === "Delivered");
+
+    document.getElementById("todayOrders").textContent = todaysOrders.length;
+    document.getElementById("todaySales").textContent = money(
+      todaysDelivered.reduce((sum, o) => sum + Number(o.total || 0), 0)
+    );
+    document.getElementById("deliveredOrders").textContent = delivered.length;
+    document.getElementById("cancelledOrders").textContent =
+      orders.filter(o => o.status === "Cancelled").length;
+
+    ordersBox.replaceChildren();
+
+    if (!orders.length) {
+      addText(ordersBox, "div", "No orders yet.", "panel");
+      message.textContent = "";
+      return;
+    }
+
+    for (const order of orders) {
+      const card = document.createElement("article");
+      card.className = "order";
+
+      const top = document.createElement("div");
+      top.className = "order-top";
+      card.appendChild(top);
+
+      const heading = document.createElement("div");
+      top.appendChild(heading);
+      addText(heading, "h3", "Order #" + order.id);
+      addText(heading, "div", new Date(order.createdAt).toLocaleString(), "small");
+
+      addText(top, "strong", money(order.total));
+
+      addText(card, "p", "Customer: " + order.name, "small");
+      addText(card, "p", "Phone: " + order.phone, "small");
+      addText(card, "p", "Address: " + order.address, "small");
+
+      addText(card, "h4", "Items");
+      const list = document.createElement("ul");
+      list.className = "items";
+
+      for (const item of order.items || []) {
+        addText(
+          list,
+          "li",
+          `${item.name} × ${item.quantity} — ${money(item.subtotal)}`
+        );
+      }
+
+      card.appendChild(list);
+      addText(card, "p", "Current status: " + order.status, "small");
+
+      const row = document.createElement("div");
+      row.className = "status-row";
+
+      const select = document.createElement("select");
+      for (const status of ["Pending", "Preparing", "Delivered", "Cancelled"]) {
+        const option = document.createElement("option");
+        option.value = status;
+        option.textContent = status;
+        if (status === order.status) option.selected = true;
+        select.appendChild(option);
+      }
+
+      const saveBtn = document.createElement("button");
+      saveBtn.textContent = "Update Status";
+      saveBtn.addEventListener("click", async () => {
+        saveBtn.disabled = true;
+        try {
+          await api("/api/admin/orders/" + encodeURIComponent(order.id) + "/status", {
+            method: "PATCH",
+            body: JSON.stringify({ status: select.value })
+          });
+          message.textContent = "Order status updated.";
+          await loadOrders();
+        } catch (error) {
+          message.textContent = error.message;
+        } finally {
+          saveBtn.disabled = false;
+        }
+      });
+
+      row.append(select, saveBtn);
+      card.appendChild(row);
+      ordersBox.appendChild(card);
+    }
+
+    message.textContent = "Orders loaded.";
+  } catch (error) {
+    message.textContent = error.message;
+  }
+}
+
+
+const menuItemsBox = document.getElementById("menuItems");
+const menuForm = document.getElementById("menuForm");
+const menuMessage = document.getElementById("menuMessage");
+const menuId = document.getElementById("menuItemId");
+const menuName = document.getElementById("menuName");
+const menuPrice = document.getElementById("menuPrice");
+const menuCategory = document.getElementById("menuCategory");
+const menuSubmitBtn = document.getElementById("menuSubmitBtn");
+
+function resetMenuForm() {
+  menuForm.reset();
+  menuId.value = "";
+  menuSubmitBtn.textContent = "Add Menu Item";
+}
+
+async function loadMenu() {
+  menuMessage.textContent = "Loading menu...";
+  try {
+    const items = await api("/api/menu");
+    menuItemsBox.replaceChildren();
+
+    if (!items.length) {
+      addText(menuItemsBox, "p", "No menu items yet.", "small");
+    }
+
+    for (const item of items) {
+      const row = document.createElement("article");
+      row.className = "menu-item";
+
+      const info = document.createElement("div");
+      addText(info, "h3", item.name);
+      addText(info, "div", money(item.price) + " · " + item.category, "small");
+
+      const actions = document.createElement("div");
+      actions.className = "menu-actions";
+
+      const edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "Edit";
+      edit.addEventListener("click", () => {
+        menuId.value = item.id;
+        menuName.value = item.name;
+        menuPrice.value = item.price;
+        menuCategory.value = item.category;
+        menuSubmitBtn.textContent = "Save Changes";
+        menuMessage.textContent = "Editing: " + item.name;
+        menuName.focus();
+      });
+
+      const del = document.createElement("button");
+      del.type = "button";
+      del.textContent = "Delete";
+      del.className = "danger";
+      del.addEventListener("click", async () => {
+        if (!confirm("Delete " + item.name + "?")) return;
+        del.disabled = true;
+        try {
+          await api("/api/admin/menu/" + encodeURIComponent(item.id), {
+            method: "DELETE",
+            body: "{}"
+          });
+          menuMessage.textContent = "Menu item deleted.";
+          resetMenuForm();
+          await loadMenu();
+        } catch (error) {
+          menuMessage.textContent = error.message;
+          del.disabled = false;
+        }
+      });
+
+      actions.append(edit, del);
+      row.append(info, actions);
+      menuItemsBox.appendChild(row);
+    }
+    menuMessage.textContent = items.length + " menu items loaded.";
+  } catch (error) {
+    menuMessage.textContent = error.message;
+  }
+}
+
+menuForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  menuSubmitBtn.disabled = true;
+
+  const editing = Boolean(menuId.value);
+  const payload = {
+    name: menuName.value.trim(),
+    price: Number(menuPrice.value),
+    category: menuCategory.value
+  };
+
+  try {
+    await api(
+      editing ? "/api/admin/menu/" + encodeURIComponent(menuId.value) : "/api/admin/menu",
+      {
+        method: editing ? "PATCH" : "POST",
+        body: JSON.stringify(payload)
+      }
+    );
+
+    menuMessage.textContent = editing ? "Menu item updated." : "Menu item added.";
+    resetMenuForm();
+    await loadMenu();
+  } catch (error) {
+    menuMessage.textContent = error.message;
+  } finally {
+    menuSubmitBtn.disabled = false;
+  }
+});
+
+document.getElementById("menuCancelBtn").addEventListener("click", resetMenuForm);
+document.getElementById("menuRefreshBtn").addEventListener("click", loadMenu);
+
+
+document.getElementById("refreshBtn").addEventListener("click", loadOrders);
+document.getElementById("refreshBtn").addEventListener("click", loadMenu);
+
+document.getElementById("logoutBtn").addEventListener("click", async () => {
+  try {
+    await api("/api/admin/logout", {
+      method: "POST",
+      body: "{}"
+    });
+  } catch (_) {}
+
+  showLogin();
+  message.textContent = "";
+  loginMessage.textContent = "Logged out.";
+});
+
+(async function checkSession() {
+  try {
+    await api("/api/admin/me");
+    showDashboard();
+    await loadOrders();
+    await loadMenu();
+  } catch (_) {
+    showLogin();
+  }
+})();
+</script>
+</body>
+</html>
