@@ -289,6 +289,32 @@ footer {
     height: 210px;
   }
 }
+
+/* Spicy Food responsive upgrade */
+html { scroll-behavior: smooth; }
+button, input, textarea { transition: transform .18s ease, border-color .18s ease, opacity .18s ease; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+.card { transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease; animation: foodAppear .4s ease both; }
+.card:hover { transform: translateY(-4px); border-color: var(--gold); box-shadow: 0 10px 28px #0005; }
+.add:hover, .primary:hover, .cart-button:hover { transform: translateY(-2px); opacity: .92; }
+#cart { scroll-margin-top: 90px; }
+@keyframes foodAppear { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 600px) {
+  header { padding: 12px; }
+  .nav { gap: 8px; }
+  .logo { font-size: 13px; }
+  .cart-button { padding: 10px 12px; white-space: nowrap; }
+  .hero { padding: 52px 16px; }
+  .container { padding: 20px 12px 40px; }
+  #cart { padding: 14px; }
+  .cart-row { align-items: flex-start; }
+  .qty { flex-shrink: 0; }
+  .form-grid button { width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
 </style>
 </head>
 
@@ -335,7 +361,19 @@ footer {
 
   <div class="grid" id="menuGrid"></div>
 
-  <section id="cart">
+
+<section id="tracking" class="panel" style="margin-top:25px;background:#211914;border:1px solid #493326;border-radius:15px;padding:18px">
+  <h2>📦 Track Your Order</h2>
+  <p style="color:#c7b9a8">Enter your order ID to check the latest status.</p>
+  <form id="trackOrderForm" class="form-grid">
+    <input id="trackOrderId" inputmode="numeric" maxlength="16" placeholder="Enter Order ID" required>
+    <input id="trackOrderToken" type="password" autocomplete="off" placeholder="Enter Tracking Token" required>
+    <button class="primary" type="submit">Check Status</button>
+  </form>
+  <div id="trackingResult" role="status" aria-live="polite" style="margin-top:12px"></div>
+</section>
+
+<section id="cart">
     <h2>🛒 Your Cart</h2>
 
     <div id="cartItems">Your cart is empty.</div>
@@ -525,7 +563,12 @@ const photo = photoMap[item.name];
 }
 
 function addToCart(id) {
+  if ((cart[id] || 0) >= 20) {
+    message.textContent = "Maximum 20 of each item allowed.";
+    return;
+  }
   cart[id] = (cart[id] || 0) + 1;
+  message.textContent = "";
   renderCart();
 }
 
@@ -664,7 +707,8 @@ document.getElementById("checkout").addEventListener("submit", async event => {
     message.textContent =
       "✅ Order #" + result.orderId +
       " received! Total: " + money(result.total) +
-      ". Please contact the restaurant to confirm delivery.";
+      ". Tracking Token: " + result.trackingToken +
+      ". Save your Order ID and Tracking Token to check order status.";
 
     cart = {};
     renderCart();
@@ -675,6 +719,44 @@ document.getElementById("checkout").addEventListener("submit", async event => {
   } finally {
     button.disabled = false;
     button.textContent = "Place Order";
+  }
+});
+
+
+document.getElementById("trackOrderForm").addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const id = document.getElementById("trackOrderId").value.trim();
+  const token = document.getElementById("trackOrderToken").value.trim();
+  const resultBox = document.getElementById("trackingResult");
+
+  if (!/^[0-9]{10,16}$/.test(id)) {
+    resultBox.textContent = "Please enter a valid order ID.";
+    return;
+  }
+
+  if (!/^[a-f0-9]{64}$/.test(token)) {
+    resultBox.textContent = "Please enter the valid Tracking Token from your order confirmation.";
+    return;
+  }
+
+  resultBox.textContent = "Checking order status...";
+
+  try {
+    const url = "/api/orders/" + encodeURIComponent(id) +
+      "/status?token=" + encodeURIComponent(token);
+
+    const response = await fetch(url, { cache: "no-store" });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Unable to track order.");
+    }
+
+    resultBox.textContent =
+      "Order #" + data.orderId + " — Status: " + data.status;
+  } catch (error) {
+    resultBox.textContent = error.message || "Unable to track order.";
   }
 });
 

@@ -54,6 +54,24 @@ app.use(session({
 
 app.use(express.static(path.join(__dirname, "public")));
 
+function createTrackingToken(orderId) {
+  return crypto
+    .createHmac("sha256", process.env.SESSION_SECRET)
+    .update(String(orderId))
+    .digest("hex");
+}
+
+function isValidTrackingToken(orderId, token) {
+  if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) {
+    return false;
+  }
+
+  const expected = Buffer.from(createTrackingToken(orderId), "hex");
+  const supplied = Buffer.from(token, "hex");
+
+  return crypto.timingSafeEqual(expected, supplied);
+}
+
 function safeEqual(a, b) {
   const aa = Buffer.from(String(a));
   const bb = Buffer.from(String(b));
@@ -328,6 +346,7 @@ app.post("/api/orders", async (req, res) => {
     res.status(201).json({
       success: true,
       orderId: String(result.rows[0].id),
+      trackingToken: createTrackingToken(result.rows[0].id),
       total: result.rows[0].total,
       message: "Order received successfully."
     });
@@ -337,6 +356,42 @@ app.post("/api/orders", async (req, res) => {
     res.status(500).json({ error: "Could not save order." });
   } finally {
     client.release();
+  }
+});
+
+app.get("/api/orders/:id/status", async (req, res) => {
+  const id = req.params.id;
+  const token = req.query.token;
+
+  if (!/^[0-9]{10,16}$/.test(id)) {
+    return res.status(400).json({ error: "Invalid order ID." });
+  }
+
+  if (!isValidTrackingToken(id, token)) {
+    return res.status(403).json({
+      error: "Invalid tracking details. Use the Tracking Token from your order confirmation."
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      "SELECT id, status, created_at FROM orders WHERE id=$1",
+      [id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ error: "Order not found." });
+    }
+
+    res.set("Cache-Control", "no-store");
+    res.json({
+      orderId: String(result.rows[0].id),
+      status: result.rows[0].status,
+      createdAt: result.rows[0].created_at
+    });
+  } catch (error) {
+    console.error("Order tracking failed:", error.code || error.message);
+    res.status(500).json({ error: "Could not check order status." });
   }
 });
 
